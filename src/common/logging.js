@@ -1,3 +1,4 @@
+const chalk = require('chalk');
 const winston = require('winston');
 const expressWinston = require('express-winston');
 const winstonDailyRotateFile = require("winston-daily-rotate-file");
@@ -8,8 +9,15 @@ const {
 } = require('./constants');
 
 const getCustomFormat = winston.format.printf(logInfo => {
-    console.log()
-    return `${logInfo.timestamp} ${logInfo.level.toUpperCase()} [${logInfo.label}] ${logInfo.message} ${(Object.keys(logInfo.metadata).length !== 0 ? JSON.stringify(logInfo.metadata) : '')} `;
+    switch (logInfo.level) {
+        case 'info':
+            console.log( `${chalk.bgGreen(logInfo.level.toUpperCase() +  ' [' + logInfo.label + ']' + ' ' + logInfo.timestamp + ' ')} ${logInfo.message} ${(Object.keys(logInfo.metadata).length !== 0 ? JSON.stringify(logInfo.metadata) : '')} `);
+            break;
+        default:
+            console.log( `${chalk.bgRed(logInfo.level.toUpperCase() + ' [' + logInfo.label + ']' + ' ' + logInfo.timestamp + ' ')} ${logInfo.message} ${(Object.keys(logInfo.metadata).length !== 0 ? JSON.stringify(logInfo.metadata) : '')} `);
+            break;
+    }
+    return `${logInfo.level.toUpperCase()} [${logInfo.label}]\t${logInfo.timestamp}\t${logInfo.message} ${(Object.keys(logInfo.metadata).length !== 0 ? JSON.stringify(logInfo.metadata) : '')} `;
 });
 
 const getTransports = () => {
@@ -29,8 +37,7 @@ const getTransports = () => {
             maxSize: '20m',
             maxFiles: '14d'
         }),
-        new winston.transports.Console(),
-
+        // new winston.transports.Console(),
     ];
 };
 
