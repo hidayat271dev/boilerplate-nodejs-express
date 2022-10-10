@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require('express')
 
 const app = express()
@@ -16,8 +17,24 @@ const server = app.listen(httpPort, () => {
     logging.info(`Application running on ${httpHost}:${httpPort}`);
 });
 
+// HTML engine
+app.use(express.static(path.join(__dirname, "public")));
+app.set('views', './src/public');
+app.set('view engine', 'ejs');
+
 app.get('/', function (req, res, next) {
-    res.send("Hello")
+    if (req.headers['content-type'] === 'application/json') {
+        res.json(
+            response.success(
+                `Welcome to service...`,
+                null,
+                200,
+                "SUCCESS"
+            )
+        )
+    } else {
+        res.render('index');
+    }
 });
 
 // MARK: For handle not found url
@@ -33,7 +50,7 @@ app.use(async (req, res) => {
             )
         )
     } else {
-
+        res.render('error_404');
     }
 
 });
