@@ -1,87 +1,100 @@
-const chalk = require('chalk');
 const winston = require('winston');
-const expressWinston = require('express-winston');
 const winstonDailyRotateFile = require("winston-daily-rotate-file");
-const {
-    PRODUCTION_ENV,
-    VERBOSE_LOGGING_LVL,
-    INFO_LOGGING_LVL,
-} = require('./constants');
+const moment = require("moment");
 
-const getCustomFormat = winston.format.printf(logInfo => {
-    switch (logInfo.level) {
-        case 'info':
-            console.log( `${chalk.bgGreen(logInfo.level.toUpperCase() +  ' [' + logInfo.label + ']' + ' ' + logInfo.timestamp + ' ')} ${logInfo.message} ${(Object.keys(logInfo.metadata).length !== 0 ? JSON.stringify(logInfo.metadata) : '')} `);
-            break;
-        default:
-            console.log( `${chalk.bgRed(logInfo.level.toUpperCase() + ' [' + logInfo.label + ']' + ' ' + logInfo.timestamp + ' ')} ${logInfo.message} ${(Object.keys(logInfo.metadata).length !== 0 ? JSON.stringify(logInfo.metadata) : '')} `);
-            break;
-    }
-    return `${logInfo.level.toUpperCase()} [${logInfo.label}]\t${logInfo.timestamp}\t${logInfo.message} ${(Object.keys(logInfo.metadata).length !== 0 ? JSON.stringify(logInfo.metadata) : '')} `;
-});
+const constants = require("./constants");
 
-const getTransports = () => {
-    return [
-        new winstonDailyRotateFile({
-            filename: 'logs/log-application-%DATE%.log',
-            datePattern: 'YYYY-MM-DD',
-            zippedArchive: true,
-            maxSize: '20m',
-            maxFiles: '14d'
-        }),
-        new winstonDailyRotateFile({
-            level: 'error',
-            filename: 'logs/errors/log-error-%DATE%.log',
-            datePattern: 'YYYY-MM-DD',
-            zippedArchive: true,
-            maxSize: '20m',
-            maxFiles: '14d'
-        }),
-        // new winston.transports.Console(),
-    ];
+const LOG_FORMAT = info => {
+    const status = info.status ? info.status : '';
+    const name = info.name ? ` ${info.name} :` : '';
+
+    const details = info.details ? `\n[DETAILS] ${JSON.stringify(info.details, null, 2)}` : '';
+    const stack = info.stack ? `\n[STACK] ${info.stack}` : ' ';
+
+    return `${moment(info.timestamp).format('YYYY-MM-DD HH:mm:ssZ')} [${info.level}] ${status} ${name} ${info.message} ${details} ${stack}`;
 };
 
-const getFormat = () => winston.format.combine(
-    winston.format.metadata(),
-    winston.format.label({
-        label: "APPLICATION"
-    }),
-    winston.format.timestamp({
-        format: "YYYY-MM-DDTHH:mm:ss.sssZ"
-    }),
-    winston.format.json(),
-    winston.format.prettyPrint(),
-    getCustomFormat
-);
 
-const requestLogger = expressWinston.logger({
-    colorize: false,
-    expressFormat: true,
-    meta: true,
-    transports: getTransports(),
-    format: getFormat(),
+const LEVEL = Symbol.for('level');
+
+const customFormat = winston.format.printf(LOG_FORMAT);
+
+const levelUpperCaseFormat = winston.format(info => {
+    info.level = info.level.toUpperCase()
+
+    return info
 });
 
-const errorLogger = expressWinston.errorLogger({
-    format: getFormat(),
-    transports: getTransports(),
-});
+/**
+ * Log only the messages the match `level`.
+ */
+function filterOnly(level) {
+    // eslint-disable-next-line consistent-return
+    return winston.format(info => {
+        if (info[LEVEL] === level) {
+            return info;
+        }
+    })();
+}
 
+const customColors = {
+    levels: {
+        error: 0,
+        warn: 1,
+        info: 2,
+        http: 3,
+        debug: 4,
+        query: 5,
+    },
+    colors: {
+        error: 'red',
+        warn: 'yellow',
+        info: 'green',
+        http: 'cyan',
+        debug: 'blue',
+        query: 'gray',
+    },
+};
 const logger = winston.createLogger({
-    level: process.env.NODE_ENV !== PRODUCTION_ENV ? VERBOSE_LOGGING_LVL : INFO_LOGGING_LVL,
-    format: getFormat(),
-    transports: getTransports(),
+    level: process.env.NODE_ENV !== constants.PRODUCTION_ENV ? constants.QUERY_LOGGING_LVL : constants.INFO_LOGGING_LVL,
+    levels: customColors.levels,
+    format: winston.format.combine(levelUpperCaseFormat(), winston.format.timestamp(), customFormat),
+    transports: [],
+    exitOnError: false,
 });
+
+winston.addColors(customColors.colors);
+
+if (process.env.NODE_ENV !== constants.DEVELOPMENT_ENV) {
+    logger.add(new winston.transports.File({ filename: `${constants.DIR_LOGS}/info.log`, format: filterOnly('info'), level: 'info' }));
+    logger.add(new winston.transports.File({ filename: `${constants.DIR_LOGS}/error.log`, format: filterOnly('error'), level: 'error' }));
+    logger.add(new winston.transports.File({ filename: `${constants.DIR_LOGS}/debug.log`, format: filterOnly('debug'), level: 'debug' }));
+    logger.add(
+        new winstonDailyRotateFile({
+            filename: `${constants.DIR_LOGS}/combined/%DATE%.log`,
+            datePattern: 'YYYY-MM-DD',
+            zippedArchive: true,
+            maxSize: '20m',
+            maxFiles: '14d',
+            level: 'debug',
+        }),
+    );
+}
+
+if (process.env.NODE_ENV !== constants.PRODUCTION_ENV) {
+    logger.add(
+        new winston.transports.Console({
+            format: winston.format.combine(levelUpperCaseFormat(), winston.format.timestamp(), winston.format.colorize(), customFormat),
+            stderrLevels: ['error'],
+        }),
+    );
+}
 
 module.exports = {
-    requestLogger,
-    errorLogger,
-    raw: logger,
-    error: logger.error.bind(logger),
-    warn: logger.warn.bind(logger),
-    info: logger.info.bind(logger),
-    log: logger.log.bind(logger),
-    verbose: logger.verbose.bind(logger),
-    debug: logger.debug.bind(logger),
-    silly: logger.silly.bind(logger),
+    error: ({ name, status, message, details, stack }) => logger.error({ name, status, message, details, stack }),
+    warn: (name, message, details) => logger.warn({ name, message, details }),
+    info: (name, message, details) => logger.info({ name, message, details }),
+    http: (name, message, details) => logger.http({ name, message, details }),
+    debug: (name, message, details) => logger.debug({ name, message, details }),
+    query: (name, message, details) => logger.query({ name, message, details }),
 };

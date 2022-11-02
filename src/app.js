@@ -1,5 +1,8 @@
 const path = require("path");
-const express = require('express')
+const express = require('express');
+const useragent = require('express-useragent');
+
+const loggingRequest = require('./common/logging-request');
 
 const app = express()
 
@@ -11,11 +14,14 @@ const response = require('./common/response');
 const httpHost = configuration.application.host
 const httpPort = configuration.application.port
 
-app.use(logging.requestLogger)
-
 const server = app.listen(httpPort, () => {
-    logging.info(`Application running on ${httpHost}:${httpPort}`);
+    logging.info('APPLICATION', `Application running on ${httpHost}:${httpPort}`);
 });
+
+app.use(useragent.express());
+app.use(loggingRequest.LogRequest);
+app.use(loggingRequest.LogResponse);
+app.use(loggingRequest.LogError);
 
 // HTML engine
 app.use(express.static(path.join(__dirname, "public")));

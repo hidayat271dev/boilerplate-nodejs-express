@@ -1,7 +1,7 @@
 const logging = require('./logging');
 
 const success = (message, results, status, code, meta = null) => {
-    logging.info(message, {results, status, code, meta})
+    logging.info("RESPONSE", message, {results, status, code, meta})
     return {
         message,
         error: false,
@@ -13,7 +13,12 @@ const success = (message, results, status, code, meta = null) => {
 };
 
 const error = (message, status, code, meta = null) => {
-    logging.error(message, {status, code, meta})
+    logging.error({
+        name: "RESPONSE",
+        message: message,
+        status: status,
+        details: {status, code, meta}
+    })
     return {
         message,
         error: true,
