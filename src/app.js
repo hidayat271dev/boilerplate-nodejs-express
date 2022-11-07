@@ -2,6 +2,7 @@ const path = require("path");
 const express = require('express');
 const useragent = require('express-useragent');
 const bodyParser = require('body-parser');
+const glob = require('glob');
 
 const loggingRequest = require('./common/logging-request');
 
@@ -42,6 +43,13 @@ app.use(loggingRequest.LogError);
 app.use(express.static(path.join(__dirname, "public")));
 app.set('views', './src/public');
 app.set('view engine', 'ejs');
+
+// MARK: Config router application
+glob.sync(`${__dirname}/modules/**/route.js`).forEach(async routerFile => {
+    const routerModule = require(routerFile);
+    console.log(routerModule)
+    app.use('/api', routerModule)
+})
 
 // MARK: For handle base url response
 app.get('/', function (req, res) {
